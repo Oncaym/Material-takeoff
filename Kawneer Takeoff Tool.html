@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hillview Reservoir — Kawneer Takeoff Tool</title>
+<link rel="stylesheet" href="colors_and_type.css" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header class="tk-header">
+  <div class="tk-header__inner">
+    <a href="#" class="tk-wordmark">ADVANCED FACADE</a>
+    <span class="tk-header__sep"></span>
+    <div class="tk-header__meta">
+      <span class="tk-header__eyebrow">Material Takeoff Tool</span>
+    </div>
+    <span class="tk-header__spacer"></span>
+  </div>
+</header>
+
+<!-- ============ PROJECT BAR ============ -->
+<div class="tk-projectbar">
+  <div>
+    <h1 class="tk-projectbar__title">Storefront Takeoff</h1>
+    <p class="tk-projectbar__sub">Define part roles, enter openings (or paste from a DXF text extraction), and the consolidated 24′ stock count updates live. Aggregation is part-centric: Head and Jamb sharing one Part Number are summed into a single total.</p>
+    <div class="tk-project-ctrl" style="margin-top:12px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span style="font:600 11px var(--af-font-sans,system-ui); letter-spacing:.12em; text-transform:uppercase; color:var(--af-fg-3,#888);">Project</span>
+      <select id="project-select" class="tk-cell-select" style="min-width:170px; padding:4px 8px;"></select>
+      <button class="tk-btn tk-btn--ghost tk-btn--sm" id="project-new" title="新建项目">+ New</button>
+      <span id="cloud-status" style="font-size:12px; color:var(--af-fg-3,#888);">● 连接中…</span>
+    </div>
+  </div>
+  <div class="tk-projectbar__meta">
+    <div class="tk-pmeta">
+      <span class="tk-pmeta__label">Parts</span>
+      <span class="tk-pmeta__val" id="meta-parts">0</span>
+    </div>
+    <div class="tk-pmeta">
+      <span class="tk-pmeta__label">Openings</span>
+      <span class="tk-pmeta__val" id="meta-openings">0</span>
+    </div>
+    <div class="tk-pmeta">
+      <span class="tk-pmeta__label">Total Qty</span>
+      <span class="tk-pmeta__val" id="meta-totalqty">0</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MAIN ============ -->
+<main class="tk-main">
+
+  <!-- LEFT COLUMN -->
+  <div class="tk-col-left">
+
+    <!-- ===== 01 — PARTS DATABASE ===== -->
+    <section class="tk-section">
+      <header class="tk-section__head">
+        <div class="tk-section__title">
+          <span class="tk-section__num">01</span>
+          <div>
+            <h2 class="tk-section__h">Parts Database</h2>
+            <p class="tk-section__sub">Map each Part Number to one or more positions. A single part can cover Head + Jamb — both will aggregate to that part.</p>
+          </div>
+        </div>
+        <div class="tk-section__actions">
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="reset-all" title="Reset to seed">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1015.7-6.1L21 3M21 3v6h-6"/></svg>
+            Reset
+          </button>
+        </div>
+      </header>
+      <div class="tk-section__body">
+        <div class="tk-table-wrap">
+          <table class="tk-table">
+            <thead>
+              <tr>
+                <th class="col-sys">System</th>
+                <th class="col-pn">Part #</th>
+                <th>Description</th>
+                <th class="col-roles">Roles (Positions Covered)</th>
+                <th class="tk-rowdel"></th>
+              </tr>
+            </thead>
+            <tbody id="parts-tbody"></tbody>
+          </table>
+        </div>
+        <div class="tk-addbar">
+          <input id="parts-file" type="file" accept=".csv,.json,.txt" hidden />
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="import-parts" title="Import CSV/JSON part list">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            Import Parts
+          </button>
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="layer-config" title="Configure DXF layer names">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>
+            Layer Config
+          </button>
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="add-part">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Part
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 02 — OPENINGS / CUT SCHEDULE ===== -->
+    <section class="tk-section">
+      <header class="tk-section__head">
+        <div class="tk-section__title">
+          <span class="tk-section__num">02</span>
+          <div>
+            <h2 class="tk-section__h">Openings</h2>
+            <p class="tk-section__sub">Each opening generates four perimeter cuts (head, sill, two jambs) plus any intermediate horizontals/verticals. Qty multiplies all cuts for that opening.</p>
+          </div>
+        </div>
+        <div class="tk-section__actions">
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="set-all-system" title="把所有 opening 的 system 一键统一">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+            Set System
+          </button>
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="clear-openings" title="Remove all openings">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/></svg>
+            Clear
+          </button>
+        </div>
+      </header>
+      <div class="tk-section__body">
+        <div class="tk-table-wrap">
+          <table class="tk-table">
+            <thead>
+              <tr>
+                <th class="col-mark">Mark</th>
+                <th class="col-sys">System</th>
+                <th class="col-num-sm">Qty</th>
+                <th class="col-num">Width (in)</th>
+                <th class="col-num">Height (in)</th>
+                <th class="col-num-sm" title="Intermediate horizontals">Horiz</th>
+                <th class="col-num-sm" title="Intermediate verticals">Vert</th>
+                <th class="col-num-sm" title="Glass lites (auto-counted from VISION GLASS MARK)">Lites</th>
+                <th class="col-num">Total (in)</th>
+                <th class="tk-rowdel"></th>
+              </tr>
+            </thead>
+            <tbody id="openings-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- Quick add row -->
+        <div class="tk-quickadd">
+          <label>Mark
+            <input id="qa-mark" type="text" placeholder="SF-01" />
+          </label>
+          <label>System
+            <select id="qa-system">
+              <option value="IR501T">IR501T</option>
+              <option value="450">450</option>
+            </select>
+          </label>
+          <label>Width
+            <input id="qa-width" type="number" min="0" step="0.125" placeholder="72" />
+          </label>
+          <label>Height
+            <input id="qa-height" type="number" min="0" step="0.125" placeholder="96" />
+          </label>
+          <label>Qty
+            <input id="qa-qty" type="number" min="1" step="1" value="1" />
+          </label>
+          <button class="tk-btn tk-btn--dark" id="add-opening">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Opening
+          </button>
+        </div>
+
+        <!-- DXF paste -->
+        <div class="tk-dxf">
+          <div class="tk-dxf__head">
+            <span class="tk-dxf__title">DXF / Schedule Paste</span>
+            <span class="tk-dxf__hint">One opening per line · accepts <code>mark · system · WxH · qty</code> or raw DXF text</span>
+          </div>
+          <textarea id="dxf-text" placeholder="SF-01  IR501T  72  96  2
+SF-02, 450, 60x84, qty 3
+ENT-1   IR501T   84&quot; x 108&quot;   x1"></textarea>
+          <div class="tk-dxf__actions">
+            <input id="dxf-file" type="file" accept=".dxf,text/plain" hidden />
+            <button class="tk-btn tk-btn--ghost tk-btn--sm" id="dxf-import">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Import DXF
+            </button>
+            <button class="tk-btn tk-btn--accent" id="dxf-parse">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+              Parse + Append
+            </button>
+            <button class="tk-btn tk-btn--ghost tk-btn--sm" id="dxf-sample">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              Load Sample
+            </button>
+            <span class="tk-dxf__status" id="qa-status"></span>
+            <span class="tk-dxf__status" id="dxf-status"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ELEVATION VIEWER (traceback) ===== -->
+    <section class="tk-section" id="viewer-section" style="display:none;">
+      <header class="tk-section__head">
+        <div>
+          <h2 class="tk-section__title">Elevation Viewer</h2>
+          <p class="tk-section__sub" id="viewer-sub"></p>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="viewer-addcut" title="新增一根料(手动)">+ Add cut</button>
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="viewer-close">Close</button>
+        </div>
+      </header>
+      <div class="tk-section__body">
+        <div id="viewer-legend" style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:10px;font-size:12px;"></div>
+        <div id="viewer-box" style="background:#fff;border:1px solid #ddd;border-radius:8px;overflow:auto;"></div>
+        <div style="font-size:11px;color:#999;margin-top:6px;">点立面图里的料(或下方 chip)可改位置/长度/数量或删除;"+ Add cut" 新增。</div>
+        <div id="viewer-edit"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ===== RIGHT COLUMN — REPORT ===== -->
+  <div class="tk-col-right">
+    <section class="tk-section">
+      <header class="tk-section__head tk-report__head">
+        <div class="tk-section__title">
+          <span class="tk-section__num">03</span>
+          <div>
+            <h2 class="tk-section__h">Consolidated Takeoff</h2>
+            <p class="tk-section__sub">By Part Number across all openings.</p>
+          </div>
+        </div>
+      </header>
+
+      <div class="tk-report__metabar">
+        <div class="tk-meta">
+          <span class="tk-meta__label">Cut Length</span>
+          <span class="tk-meta__val" id="meta-inches">—</span>
+        </div>
+        <div class="tk-meta">
+          <span class="tk-meta__label">24′ Stocks</span>
+          <span class="tk-meta__val" id="meta-waste">—</span>
+        </div>
+        <div class="tk-meta">
+          <span class="tk-meta__label">Stocks +20%</span>
+          <span class="tk-meta__val" id="meta-stocks">—</span>
+        </div>
+      </div>
+
+      <div id="report-body"></div>
+
+      <div class="tk-report__foot">
+        <span class="tk-formula">
+          <b>stocks</b> = FFD 摆料(长段优先 · 回头补余料 · 超长段拼接) · +20% = ⌈ stocks × <b>1.20</b> ⌉
+        </span>
+        <div style="display:flex; gap:8px;">
+          <button class="tk-btn tk-btn--ghost tk-btn--sm" id="copy-report">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            Copy
+          </button>
+          <button class="tk-btn tk-btn--accent tk-btn--sm" id="export-csv">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ACCESSORIES TAKEOFF ===== -->
+    <section class="tk-section">
+      <header class="tk-section__head">
+        <div class="tk-section__title">
+          <span class="tk-section__num">04</span>
+          <div>
+            <h2 class="tk-section__h">Accessories</h2>
+            <p class="tk-section__sub">Gaskets, fasteners, shear/setting blocks, anchors — rule-based off the framing takeoff. Positions blank = all.</p>
+          </div>
+        </div>
+        <button class="tk-btn tk-btn--ghost tk-btn--sm" id="acc-add">Add Rule</button>
+      </header>
+      <div class="tk-section__body">
+        <div class="tk-table-wrap">
+          <table class="tk-table">
+            <thead>
+              <tr>
+                <th class="col-sys">System</th>
+                <th class="col-mark">Part #</th>
+                <th>Description</th>
+                <th class="col-sys">Rule</th>
+                <th>Positions</th>
+                <th class="col-num-sm" title="per piece qty / o.c. spacing / LF factor / per lite qty">Param</th>
+                <th class="col-num-sm" title="min per piece (spacing rule)">Min</th>
+                <th class="col-num">Qty</th>
+                <th class="tk-rowdel"></th>
+              </tr>
+            </thead>
+            <tbody id="acc-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div style="font-size:11px; color:var(--af-fg-3); padding:0 4px; line-height:1.5;">
+      <span style="font-family:var(--af-font-mono); letter-spacing:var(--af-tracking-mono);">NOTE</span> — Saved locally in this browser. Use Export CSV to hand off the takeoff. Mark + system + W×H + Qty is the minimum needed per opening; intermediates are optional.
+    </div>
+
+    <span class="tk-dxf__status" id="export-status" style="text-align:right; padding:0 4px;"></span>
+  </div>
+
+
+<!-- System picker dialog (import + bulk set) -->
+<div id="system-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.5); align-items:center; justify-content:center;">
+  <div style="background:var(--af-bg-1,#fff); color:var(--af-fg-1,#111); padding:24px; border-radius:6px; max-width:440px; width:90%; font-family:var(--af-font-sans,system-ui);">
+    <h3 id="system-modal-title" style="margin-top:0;">选择 System</h3>
+    <p id="system-modal-msg" style="color:var(--af-fg-3,#666); font-size:13px; margin:8px 0 18px;"></p>
+    <div id="system-modal-choices" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+  </div>
+</div>
+
+<!-- Layer Config dialog (hidden until opened) -->
+<div id="layer-config-modal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,.5); align-items:center; justify-content:center;">
+  <div style="background:var(--af-bg-1,#fff); color:var(--af-fg-1,#111); padding:24px; border-radius:6px; max-width:480px; width:90%; font-family:var(--af-font-sans,system-ui);">
+    <h3 style="margin-top:0;">DXF Layer Configuration</h3>
+    <p style="font-size:12px; color:var(--af-fg-3,#666);">Set layer names used in your DXF files. These are used during DXF geometry parsing.</p>
+    <div style="display:grid; gap:8px;">
+      <label style="display:flex; flex-direction:column; font-size:12px;">Aluminum profile layer
+        <input id="lc-alum" type="text" style="padding:6px; border:1px solid #ccc; border-radius:3px;"></label>
+      <label style="display:flex; flex-direction:column; font-size:12px;">Door subframe layer
+        <input id="lc-doorSubframe" type="text" style="padding:6px; border:1px solid #ccc; border-radius:3px;"></label>
+      <label style="display:flex; flex-direction:column; font-size:12px;">Outline layer
+        <input id="lc-outline" type="text" style="padding:6px; border:1px solid #ccc; border-radius:3px;"></label>
+      <label style="display:flex; flex-direction:column; font-size:12px;">Door panel layer
+        <input id="lc-door" type="text" style="padding:6px; border:1px solid #ccc; border-radius:3px;"></label>
+      <label style="display:flex; flex-direction:column; font-size:12px;">Fallback layers (comma-separated)
+        <input id="lc-fallbacks" type="text" style="padding:6px; border:1px solid #ccc; border-radius:3px;" placeholder="0,Defpoints"></label>
+    </div>
+    <div style="margin-top:16px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="tk-btn tk-btn--ghost tk-btn--sm" id="lc-cancel">Cancel</button>
+      <button class="tk-btn tk-btn--dark" id="lc-save">Save</button>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script type="module" src="firebase-init.js?v=20260618"></script>
+<script src="systems.js?v=20260618"></script>
+<script src="app.js?v=20260618"></script>
+<script src="cloud-sync.js?v=20260618"></script>
+</body>
+</html>
