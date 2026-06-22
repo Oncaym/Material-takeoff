@@ -1306,9 +1306,11 @@ function dxfDetectCuts(outline, alumProfiles, doorSubframe, opts) {
 }
 
 // 1600 专用归类:基于已解析的 cut.src 几何,只分 4 类,不做门检测。
-//   横料: 最上=Head, 最下=Sill, 其余=Horizontal
-//   竖料: 最左/最右=Jamb, 其余=Vertical
-// 门洞处被拆成 上/下 两段的竖料(共用同一 src)会去重合回整根。
+// 判定原则(用户定义):"某一侧没有相邻横料 = 周边"
+//   竖料: 只有一边有横料 → Jamb;两边都有 → Vertical
+//   横料: 上方没有横料(本跨最顶) → Head;下方没有 → Sill;上下都有 → Horizontal
+// 这样能扛阶梯底/门洞:角部抬高的底料、门头横料都按"本跨上下邻居"正确归类,
+// 而不是用全局最高/最低一条线。门洞处被拆成两段的竖料(共用 src)去重合回整根。
 function reclassify1600(o) {
   if (!o || !Array.isArray(o.cuts) || !o.cuts.length) return;
   const seen = new Set(), boxes = [];
@@ -1319,29 +1321,33 @@ function reclassify1600(o) {
     seen.add(key); boxes.push(s);
   }
   if (!boxes.length) return;   // 无溯源几何(手填)→ 不动
-  const horiz = boxes.filter(s => s.w >= s.h);
-  const vert  = boxes.filter(s => s.h > s.w);
-  const hyc = horiz.map(s => s.y + s.h / 2);
-  const topY = hyc.length ? Math.max(...hyc) : null;
-  const botY = hyc.length ? Math.min(...hyc) : null;
-  const vxc = vert.map(s => s.x + s.w / 2);
-  const leftX  = vxc.length ? Math.min(...vxc) : null;
-  const rightX = vxc.length ? Math.max(...vxc) : null;
-  const tolY = Math.max(2, (o.height || 0) * 0.02);
-  const tolX = Math.max(2, (o.width  || 0) * 0.02);
+  const H = o.height || 1, W = o.width || 1;
+  const tx = Math.max(2, W * 0.01), ty = Math.max(2, H * 0.01);
+  const mk = (s) => ({ s, x0: s.x, x1: s.x + s.w, y0: s.y, y1: s.y + s.h, xc: s.x + s.w / 2, yc: s.y + s.h / 2 });
+  const horiz = boxes.filter(s => s.w >= s.h).map(mk);
+  const vert  = boxes.filter(s => s.h > s.w).map(mk);
+  const coversX = (h, x) => h.x0 <= x + 0.001 && h.x1 >= x - 0.001;            // 横料是否盖住某 x 点
+  const ovX = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);          // x 区间重叠量
+  const near = (a, b) => ovX(a, b) > Math.min(a.x1 - a.x0, b.x1 - b.x0) * 0.4; // 视为上下相邻
   const cuts = [];
-  for (const s of horiz) {
-    const yc = s.y + s.h / 2;
-    let pos = 'Horizontal';
-    if (topY != null && Math.abs(yc - topY) <= tolY) pos = 'Head';
-    else if (botY != null && Math.abs(yc - botY) <= tolY) pos = 'Sill';
-    cuts.push({ position: pos, length: dxfRound(s.w), count: 1, src: { ...s } });
+  // 竖料:看左右两侧紧邻处有没有横料
+  for (const v of vert) {
+    const rel = horiz.filter(h => h.y1 >= v.y0 - ty && h.y0 <= v.y1 + ty);     // y 区间相交的横料
+    const left  = rel.some(h => coversX(h, v.xc - tx));
+    const right = rel.some(h => coversX(h, v.xc + tx));
+    cuts.push({ position: (left && right) ? 'Vertical' : 'Jamb', length: dxfRound(v.s.h), count: 1, src: { ...v.s } });
   }
-  for (const s of vert) {
-    const xc = s.x + s.w / 2;
-    let pos = 'Vertical';
-    if ((leftX != null && Math.abs(xc - leftX) <= tolX) || (rightX != null && Math.abs(xc - rightX) <= tolX)) pos = 'Jamb';
-    cuts.push({ position: pos, length: dxfRound(s.h), count: 1, src: { ...s } });
+  // 横料:看上方/下方(x 区间重叠)有没有横料;门头(抬高且下方无料)单列 Transom Bar
+  const botRef = horiz.length ? Math.min(...horiz.map(g => g.yc)) : 0;
+  for (const h of horiz) {
+    const above = horiz.some(g => g !== h && g.yc > h.yc + ty && near(g, h));
+    const below = horiz.some(g => g !== h && g.yc < h.yc - ty && near(g, h));
+    let pos;
+    if (above && below) pos = 'Horizontal';
+    else if (!above && !below) pos = (h.yc > H / 2) ? 'Head' : 'Sill';         // 孤立件按上/下半场
+    else if (!above) pos = 'Head';                                             // 上无下有 → 本跨最顶 = Head
+    else pos = (h.yc <= botRef + H * 0.2) ? 'Sill' : 'Transom Bar';            // 上有下无 → 近底=Sill,抬高=门头(单独算)
+    cuts.push({ position: pos, length: dxfRound(h.s.w), count: 1, src: { ...h.s } });
   }
   o.cuts = cuts;
   o.horiz = cuts.filter(c => c.position === 'Horizontal').length;
