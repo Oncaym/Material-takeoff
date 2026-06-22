@@ -1330,12 +1330,31 @@ function reclassify1600(o) {
   const ovX = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);          // x 区间重叠量
   const near = (a, b) => ovX(a, b) > Math.min(a.x1 - a.x0, b.x1 - b.x0) * 0.4; // 视为上下相邻
   const cuts = [];
-  // 竖料:看左右两侧紧邻处有没有横料
-  for (const v of vert) {
-    const rel = horiz.filter(h => h.y1 >= v.y0 - ty && h.y0 <= v.y1 + ty);     // y 区间相交的横料
-    const left  = rel.some(h => coversX(h, v.xc - tx));
-    const right = rel.some(h => coversX(h, v.xc + tx));
-    cuts.push({ position: (left && right) ? 'Vertical' : 'Jamb', length: dxfRound(v.s.h), count: 1, src: { ...v.s } });
+  // 竖料:按"列"(同 x 的多段合并判断,避免一根竖梃被拆成几段后判定不一致)。
+  // Jamb = 某一侧没有 bay(沿其高度成片的横料)且该侧是外边界;
+  //   门洞那种内部缺口:该侧的"缺口"高度处、再往外仍有横料 → 算内部 → Vertical。
+  const cols = [];
+  vert.slice().sort((a, b) => a.xc - b.xc).forEach(v => {
+    let c = cols.find(c => Math.abs(c.xc - v.xc) <= tx);
+    if (!c) { c = { xc: v.xc, y0: v.y0, y1: v.y1, segs: [v] }; cols.push(c); }
+    else { c.y0 = Math.min(c.y0, v.y0); c.y1 = Math.max(c.y1, v.y1); c.segs.push(v); }
+  });
+  for (const c of cols) {
+    const vh = c.y1 - c.y0;
+    const relH = horiz.filter(h => h.y1 >= c.y0 - ty && h.y0 <= c.y1 + ty);
+    const sideHs = side => relH.filter(h => coversX(h, side < 0 ? c.xc - tx : c.xc + tx));
+    const bayed = side => {                                   // 该侧横料是否沿高度成片(真有玻璃格)
+      const hs = sideHs(side); if (hs.length < 2) return false;
+      const ys = hs.map(h => h.yc);
+      return (Math.max(...ys) - Math.min(...ys)) >= vh * 0.4;
+    };
+    const immCovered = (side, y) => sideHs(side).some(g => Math.abs(g.yc - y) <= ty);
+    const framedBeyond = side => horiz.some(h =>                // 该侧"缺口"高度处、再往外是否仍有横料
+      (side < 0 ? h.x1 <= c.xc - tx : h.x0 >= c.xc + tx) &&
+      h.yc >= c.y0 - ty && h.yc <= c.y1 + ty && !immCovered(side, h.yc));
+    const open = (!bayed(-1) && !framedBeyond(-1)) || (!bayed(1) && !framedBeyond(1));
+    const pos = open ? 'Jamb' : 'Vertical';
+    for (const v of c.segs) cuts.push({ position: pos, length: dxfRound(v.s.h), count: 1, src: { ...v.s } });
   }
   // 横料:看上方/下方(x 区间重叠)有没有横料;门头(抬高且下方无料)单列 Transom Bar
   const botRef = horiz.length ? Math.min(...horiz.map(g => g.yc)) : 0;
