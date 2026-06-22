@@ -227,6 +227,19 @@ const POSITION_COLORS = {
   'Door Jamb': '#e000e0', 'Outside 90° Corner': '#808080', 'Subsill': '#f26722',
 };
 
+// 1600 系统(两种尺寸):只分 4 类。Head/Sill/Transom Bar 用同一种颜色(周边横料)。
+function is1600(system) { return /^1600/.test(String(system || '')); }
+const COLOR_1600 = {
+  'Head': '#e6c700', 'Sill': '#e6c700', 'Transom Bar': '#e6c700', // 周边横料(黄)
+  'Horizontal': '#00b4b4',                                        // 中间横料(青)
+  'Jamb': '#00b400',                                              // 周边竖料(绿)
+  'Vertical': '#9898cc',                                          // 中间竖料(紫)
+};
+function cutColor(position, system) {
+  if (is1600(system)) return COLOR_1600[position] || POSITION_COLORS[position] || '#bbb';
+  return POSITION_COLORS[position] || '#bbb';
+}
+
 // 系统相关改名(450 与 IR501T 唯一区别都在这): 门框 transom 以上那段 ——
 //   · 既是 elevation 最边 jamb → Jamb
 //   · 其余(中间门框)→ 与 Vertical 同一构成, 归 Vertical(同色)
@@ -276,7 +289,7 @@ function renderViewer(openingId) {
       }
       const x = s.x - minX, y = maxY - (y0 + hh); // DXF y朝上 → SVG y朝下
       const dp = cutDisplayPosition(c, o.system);
-      const col = POSITION_COLORS[dp] || '#bbbbbb';
+      const col = cutColor(dp, o.system);
       const sel = idx === viewerEditIdx;
       return `<rect data-cut="${idx}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${Math.max(s.w, minVis).toFixed(2)}" height="${Math.max(hh, minVis).toFixed(2)}" fill="${col}" fill-opacity="0.85" stroke="${sel ? '#ff2d2d' : '#222'}" stroke-width="${(Math.max(W, H) * (sel ? 0.006 : 0.0015)).toFixed(3)}" style="cursor:pointer;"><title>${escHtml(dp)} — ${formatNumber(c.length)}"${s.layer ? ' · ' + escHtml(s.layer) : ''}  (点击编辑)</title></rect>`;
     }).join('');
@@ -319,7 +332,7 @@ function renderViewer(openingId) {
     agg[dp].n += (c.count || 1);
   }
   legend.innerHTML = Object.entries(agg).map(([p, a]) =>
-    `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid #555;background:${POSITION_COLORS[p] || '#bbb'};"></span>${escHtml(p)} · ${a.n} pcs · ${formatNumber(a.len)}"</span>`
+    `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid #555;background:${cutColor(p, o.system)};"></span>${escHtml(p)} · ${a.n} pcs · ${formatNumber(a.len)}"</span>`
   ).join('');
   sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -890,7 +903,11 @@ function onOpeningsInput(e) {
   const f = e.target.dataset.field;
   if (!f) return;
   if (f === 'mark') o.mark = e.target.value;
-  else if (f === 'system') o.system = e.target.value;
+  else if (f === 'system') {
+    o.system = e.target.value;
+    // 改成 1600 → 按 4 类重新归类(基于已解析几何);改完重画整表
+    if (is1600(o.system) && Array.isArray(o.cuts) && o.cuts.length) { reclassify1600(o); renderOpenings(); }
+  }
   else if (['qty','width','height','horiz','vert','lites'].includes(f)) o[f] = parseFloat(e.target.value) || 0;
 
   // Light update — only re-render report + meta + the row's total cell
@@ -1288,6 +1305,48 @@ function dxfDetectCuts(outline, alumProfiles, doorSubframe, opts) {
   return cuts;
 }
 
+// 1600 专用归类:基于已解析的 cut.src 几何,只分 4 类,不做门检测。
+//   横料: 最上=Head, 最下=Sill, 其余=Horizontal
+//   竖料: 最左/最右=Jamb, 其余=Vertical
+// 门洞处被拆成 上/下 两段的竖料(共用同一 src)会去重合回整根。
+function reclassify1600(o) {
+  if (!o || !Array.isArray(o.cuts) || !o.cuts.length) return;
+  const seen = new Set(), boxes = [];
+  for (const c of o.cuts) {
+    if (!c.src) continue;
+    const s = c.src, key = [s.x, s.y, s.w, s.h].join(',');
+    if (seen.has(key)) continue;
+    seen.add(key); boxes.push(s);
+  }
+  if (!boxes.length) return;   // 无溯源几何(手填)→ 不动
+  const horiz = boxes.filter(s => s.w >= s.h);
+  const vert  = boxes.filter(s => s.h > s.w);
+  const hyc = horiz.map(s => s.y + s.h / 2);
+  const topY = hyc.length ? Math.max(...hyc) : null;
+  const botY = hyc.length ? Math.min(...hyc) : null;
+  const vxc = vert.map(s => s.x + s.w / 2);
+  const leftX  = vxc.length ? Math.min(...vxc) : null;
+  const rightX = vxc.length ? Math.max(...vxc) : null;
+  const tolY = Math.max(2, (o.height || 0) * 0.02);
+  const tolX = Math.max(2, (o.width  || 0) * 0.02);
+  const cuts = [];
+  for (const s of horiz) {
+    const yc = s.y + s.h / 2;
+    let pos = 'Horizontal';
+    if (topY != null && Math.abs(yc - topY) <= tolY) pos = 'Head';
+    else if (botY != null && Math.abs(yc - botY) <= tolY) pos = 'Sill';
+    cuts.push({ position: pos, length: dxfRound(s.w), count: 1, src: { ...s } });
+  }
+  for (const s of vert) {
+    const xc = s.x + s.w / 2;
+    let pos = 'Vertical';
+    if ((leftX != null && Math.abs(xc - leftX) <= tolX) || (rightX != null && Math.abs(xc - rightX) <= tolX)) pos = 'Jamb';
+    cuts.push({ position: pos, length: dxfRound(s.h), count: 1, src: { ...s } });
+  }
+  o.cuts = cuts;
+  o.horiz = cuts.filter(c => c.position === 'Horizontal').length;
+  o.vert  = cuts.filter(c => c.position === 'Vertical').length;
+}
 
 function dxfSystemForMark(mark) {
   const clean = String(mark || '').toUpperCase().replace(/\s+/g, '');
@@ -1506,7 +1565,7 @@ async function setAllOpeningsSystem() {
     includeAuto: false,
   });
   if (!sys) return; // 取消
-  state.openings.forEach(o => { o.system = sys; });
+  state.openings.forEach(o => { o.system = sys; if (is1600(sys)) reclassify1600(o); });
   save(); renderOpenings(); renderReport(); renderMeta();
 }
 
@@ -1541,6 +1600,7 @@ async function appendParsedOpenings(result, sourceEl = null) {
     return;
   }
   if (sys) openings.forEach(o => { o.system = sys; });
+  if (is1600(sys)) openings.forEach(reclassify1600);
   state.openings.push(...openings);
   renderOpenings(); renderReport(); renderMeta(); save();
   const msg = `+${openings.length} openings added` + (errors.length ? ` · ${errors.length} skipped` : '');
